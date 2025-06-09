@@ -1,12 +1,17 @@
-import 'package:aplikasi_kontak/view/contact.dart';
-import 'package:aplikasi_kontak/view/edit_akun.dart';
-import 'package:aplikasi_kontak/view/edit_contact.dart';
-import 'package:aplikasi_kontak/view/login.dart';
-import 'package:aplikasi_kontak/view/new_contact.dart'; // Pastikan file ini ada
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'contact.dart';
+import 'edit_akun.dart';
+import 'edit_contact.dart';
+import 'login.dart';
+import 'new_contact.dart';
+import 'package:aplikasi_kontak/api/api_constants.dart';
 
 class DetailContact extends StatefulWidget {
-  const DetailContact({super.key});
+  final int contactId;
+  const DetailContact({super.key, required this.contactId});
 
   @override
   State<DetailContact> createState() => _DetailContactState();
@@ -14,6 +19,8 @@ class DetailContact extends StatefulWidget {
 
 class _DetailContactState extends State<DetailContact> {
   int _selectedIndex = 0;
+  String? name;
+  Map<String, dynamic>? contactData;
 
   void _onNavTapped(int index) {
     if (index == 1) {
@@ -27,6 +34,74 @@ class _DetailContactState extends State<DetailContact> {
         MaterialPageRoute(
           builder: (_) => Contact(),
         ), // Ganti 'yasir' dengan username yang sesuai
+      );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    getUserIdAndFetchName();
+    fetchContactDetail(widget.contactId);
+  }
+
+  void getUserIdAndFetchName() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id');
+    if (userId != null) {
+      fetchUserData(userId);
+    }
+  }
+
+  Future<void> fetchUserData(int userId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConstants.user}?id=$userId'),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final user = data['data'];
+      setState(() {
+        name = user['name'] ?? '';
+      });
+    }
+  }
+
+  Future<void> fetchContactDetail(int contactId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConstants.detailContact}?id=$contactId'),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['error'] == null) {
+        setState(() {
+          contactData = data;
+        });
+      } else {
+        // Handle error jika kontak tidak ditemukan
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data['error'])),
+        );
+      }
+    }
+  }
+
+  Future<void> deleteContact(int contactId) async {
+    final response = await http.delete(
+      Uri.parse('${ApiConstants.deleteContact}?id=$contactId'),
+    );
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200 && data['message'] != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(data['message'])),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => Contact()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(data['error'] ?? 'Gagal menghapus kontak')),
       );
     }
   }
@@ -47,7 +122,9 @@ class _DetailContactState extends State<DetailContact> {
                     radius: 32,
                     backgroundColor: Colors.white,
                     child: Text(
-                      "U", // Atau bisa dikosongkan ''
+                      (name != null && name!.isNotEmpty)
+                          ? name![0].toUpperCase()
+                          : '',
                       style: const TextStyle(
                         fontSize: 40,
                         color: Colors.blue,
@@ -57,7 +134,7 @@ class _DetailContactState extends State<DetailContact> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    "", // Tidak ada username
+                    name ?? '',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -234,7 +311,7 @@ class _DetailContactState extends State<DetailContact> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  "Nama Kontak",
+                  contactData?['name'] ?? 'Nama Kontak',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -243,7 +320,7 @@ class _DetailContactState extends State<DetailContact> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Company Name",
+                  contactData?['company'] ?? 'Company Name',
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.grey[700],
@@ -253,7 +330,7 @@ class _DetailContactState extends State<DetailContact> {
                 ListTile(
                   leading: Icon(Icons.phone, color: Colors.blue),
                   title: Text(
-                    "08123456789",
+                    contactData?['phone'] ?? '-',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text("Phone"),
@@ -261,7 +338,7 @@ class _DetailContactState extends State<DetailContact> {
                 ListTile(
                   leading: Icon(Icons.email, color: Colors.blue),
                   title: Text(
-                    "email@email.com",
+                    contactData?['email'] ?? '-',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text("Email"),
@@ -278,12 +355,20 @@ class _DetailContactState extends State<DetailContact> {
                       ),
                       elevation: 0,
                     ),
-                    onPressed: () {
-                      // Aksi edit atau kembali
-                      Navigator.pushReplacement(
+                    onPressed: () async {
+                      final result = await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const EditContact()),
+                        MaterialPageRoute(
+                          builder: (_) => EditContact(
+                            contactId:
+                                int.parse(contactData?['id'].toString() ?? '0'),
+                          ),
+                        ),
                       );
+                      if (result == true) {
+                        // Jika edit berhasil, fetch ulang data detail
+                        fetchContactDetail(widget.contactId);
+                      }
                     },
                     icon: Icon(Icons.edit, color: Colors.white),
                     label: Text(
@@ -323,10 +408,7 @@ class _DetailContactState extends State<DetailContact> {
                             TextButton(
                               onPressed: () {
                                 // Proses hapus kontak di sini
-                                Navigator.pop(context); // Tutup dialog
-                                Navigator.pop(
-                                    context); // Kembali ke halaman sebelumnya
-                                // Atau bisa pushReplacement ke Contact()
+                                deleteContact(widget.contactId);
                               },
                               child: Text('Hapus',
                                   style: TextStyle(color: Colors.red)),

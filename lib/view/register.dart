@@ -1,5 +1,8 @@
 import 'package:aplikasi_kontak/view/login.dart';
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:aplikasi_kontak/api/api_constants.dart';
 
 class Register extends StatefulWidget {
   const Register({super.key});
@@ -10,9 +13,67 @@ class Register extends StatefulWidget {
 
 class _RegisterState extends State<Register> {
   final _formKey = GlobalKey<FormState>();
-  String _name = '';
-  String _username = '';
-  String _password = '';
+  String? _name;
+  String? _username;
+  String? _password;
+  bool viewPass = true;
+
+  void showHide() {
+    setState(() {
+      viewPass = !viewPass;
+    });
+  }
+
+  void check() {
+    final form = _formKey.currentState;
+    if (form != null && form.validate()) {
+      form.save();
+      register();
+    }
+  }
+
+  Future<void> register() async {
+    final response = await http.post(
+      Uri.parse(ApiConstants.register),
+      body: {
+        'name': _name ?? '',
+        'username': _username ?? '',
+        'password': _password ?? '',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      int flag = data['flag'];
+      String pesan = data['message'];
+      if (flag == 1) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text("Registrasi berhasil, silakan login.")),
+          );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const Login()),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(pesan)),
+          );
+        }
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('Register failed. Status code: ${response.statusCode}')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +82,7 @@ class _RegisterState extends State<Register> {
         automaticallyImplyLeading: false,
         elevation: 0,
       ),
-      resizeToAvoidBottomInset: true, // Tambahkan baris ini
+      resizeToAvoidBottomInset: true,
       body: SingleChildScrollView(
         padding: const EdgeInsets.only(left: 30, right: 30, top: 100),
         child: Form(
@@ -93,7 +154,7 @@ class _RegisterState extends State<Register> {
                   labelText: 'Password',
                   border: OutlineInputBorder(),
                 ),
-                obscureText: true,
+                obscureText: viewPass,
                 onSaved: (value) => _password = value ?? '',
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Masukkan password' : null,
@@ -110,15 +171,7 @@ class _RegisterState extends State<Register> {
                     ),
                     elevation: 0,
                   ),
-                  onPressed: () {
-                    if (_formKey.currentState?.validate() ?? false) {
-                      _formKey.currentState?.save();
-                      // Proses register di sini
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Register sebagai $_username')),
-                      );
-                    }
-                  },
+                  onPressed: check,
                   child: const Text(
                     'Register',
                     style: TextStyle(
@@ -136,7 +189,7 @@ class _RegisterState extends State<Register> {
                   const Text("Already have an account? "),
                   GestureDetector(
                     onTap: () {
-                      Navigator.push(
+                      Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(builder: (_) => const Login()),
                       );

@@ -1,28 +1,106 @@
-import 'package:aplikasi_kontak/view/detail_contact.dart';
-import 'package:aplikasi_kontak/view/edit_akun.dart';
-import 'package:aplikasi_kontak/view/login.dart';
-import 'package:aplikasi_kontak/view/new_contact.dart'; // Pastikan file ini ada
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'detail_contact.dart';
+import 'edit_akun.dart';
+import 'login.dart';
+import 'new_contact.dart';
+import 'package:aplikasi_kontak/api/api_constants.dart';
 
 class Contact extends StatefulWidget {
-  final String? username; // nama orang login
-  const Contact({super.key, this.username});
+  const Contact({super.key});
 
   @override
   State<Contact> createState() => _ContactState();
 }
 
 class _ContactState extends State<Contact> {
-  // Contoh data kontak
-  List<Map<String, String>> contacts = [
-    {"name": "Ari Wibowo", "phone": "08123456789"},
-    {"name": "Budi Santoso", "phone": "08234567890"},
-    {"name": "Citra Dewi", "phone": "08345678901"},
-    {"name": "Dewi Lestari", "phone": "08456789012"},
-    {"name": "Eko Prasetyo", "phone": "08567890123"},
-  ];
-
+  List<Map<String, String>> contacts = [];
   int _selectedIndex = 0;
+  int? userId;
+  String? name;
+
+  @override
+  void initState() {
+    super.initState();
+    getUserId();
+  }
+
+  void getUserId() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userId = prefs.getInt('user_id');
+    });
+    if (userId != null) {
+      fetchUserData(userId!);
+      fetchContacts(userId!);
+    }
+  }
+
+  Future<void> fetchUserData(int userId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConstants.user}?id=$userId'),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final user = data['data'];
+      setState(() {
+        name = user['name'] ?? '';
+      });
+    }
+  }
+
+  Future<void> fetchContacts(int userId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConstants.readContact}?id=$userId'),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data is List) {
+        setState(() {
+          contacts = data.map<Map<String, String>>((contact) {
+            return {
+              "id": contact['id'].toString(),
+              "name": contact['name'] ?? '',
+              "phone": contact['phone'] ?? '',
+            };
+          }).toList();
+        });
+      }
+    } else {
+      print('Gagal mengambil kontak: ${response.body}');
+    }
+  }
+
+  Future<void> deleteAccount(int userId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('${ApiConstants.deleteUser}?id=$userId'),
+      );
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['message'] != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data['message'])),
+        );
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.clear();
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const Login()),
+          (route) => false,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(data['message'] ?? 'Gagal menghapus akun')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Terjadi error: $e')),
+      );
+    }
+  }
 
   void _onNavTapped(int index) {
     if (index == 1) {
@@ -53,8 +131,8 @@ class _ContactState extends State<Contact> {
                     radius: 32,
                     backgroundColor: Colors.white,
                     child: Text(
-                      (widget.username != null && widget.username!.isNotEmpty)
-                          ? widget.username![0].toUpperCase()
+                      (name != null && name!.isNotEmpty)
+                          ? name![0].toUpperCase()
                           : '',
                       style: const TextStyle(
                         fontSize: 40,
@@ -65,7 +143,7 @@ class _ContactState extends State<Contact> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    widget.username ?? '',
+                    name ?? '',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -82,14 +160,14 @@ class _ContactState extends State<Contact> {
                 setState(() {
                   _selectedIndex = 0;
                 });
-                Navigator.pop(context); // tutup drawer
+                Navigator.pop(context);
               },
             ),
             ListTile(
               leading: const Icon(Icons.person_add),
               title: const Text('Add New Contact'),
               onTap: () {
-                Navigator.pop(context); // tutup drawer
+                Navigator.pop(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const NewContact()),
@@ -99,41 +177,40 @@ class _ContactState extends State<Contact> {
             ListTile(
               leading: const Icon(Icons.edit),
               title: const Text('Edit Akun'),
-              onTap: () {
-                // Navigasi ke halaman Edit Akun
-                Navigator.push(
+              onTap: () async {
+                await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const EditAkun()),
+                  MaterialPageRoute(builder: (_) => EditAkun(userId: userId)),
                 );
+                if (userId != null) {
+                  fetchUserData(userId!);
+                }
               },
             ),
             ListTile(
               leading: const Icon(Icons.delete),
               title: const Text('Hapus Akun'),
               onTap: () {
-                // Aksi hapus akun, misal tampilkan konfirmasi
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: Text('Hapus Akun'),
-                    content:
-                        Text('Apakah Anda yakin ingin menghapus akun ini?'),
+                    title: const Text('Hapus Akun'),
+                    content: const Text(
+                        'Apakah Anda yakin ingin menghapus akun ini?'),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: Text('Batal'),
+                        child: const Text('Batal'),
                       ),
                       TextButton(
-                        onPressed: () {
-                          // Proses hapus akun di sini
-                          Navigator.pop(context); // Tutup dialog
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (_) => const Login()),
-                          );
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          if (userId != null) {
+                            await deleteAccount(userId!);
+                          }
                         },
-                        child:
-                            Text('Hapus', style: TextStyle(color: Colors.red)),
+                        child: const Text('Hapus',
+                            style: TextStyle(color: Colors.red)),
                       ),
                     ],
                   ),
@@ -156,10 +233,8 @@ class _ContactState extends State<Contact> {
       ),
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.blue, // warna biru appbar
-        iconTheme: const IconThemeData(
-          color: Colors.white, // Ubah warna icon drawer (menu) jadi putih
-        ),
+        backgroundColor: Colors.blue,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Row(
           children: [
             CircleAvatar(
@@ -176,7 +251,7 @@ class _ContactState extends State<Contact> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white, // teks putih
+                    color: Colors.white,
                   ),
                 ),
                 Text(
@@ -202,41 +277,54 @@ class _ContactState extends State<Contact> {
         ),
       ),
       body: SingleChildScrollView(
-        child: ListView.separated(
-          shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
-          itemCount: contacts.length,
-          separatorBuilder: (context, index) =>
-              const Divider(indent: 70, endIndent: 20),
-          itemBuilder: (context, index) {
-            final contact = contacts[index];
-            return ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.blue.shade100,
-                child: Text(
-                  contact['name']![0],
-                  style: TextStyle(
-                    color: Colors.blue[900],
-                    fontWeight: FontWeight.bold,
-                  ),
+        child: contacts.isEmpty
+            ? Container(
+                margin: const EdgeInsets.only(top: 20),
+                child: const Center(
+                  child: Text("Belum ada kontak."),
                 ),
+              )
+            : ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+                itemCount: contacts.length,
+                separatorBuilder: (context, index) =>
+                    const Divider(indent: 70, endIndent: 20),
+                itemBuilder: (context, index) {
+                  final contact = contacts[index];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue.shade100,
+                      child: Text(
+                        contact['name']!.isNotEmpty
+                            ? contact['name']![0].toUpperCase()
+                            : '',
+                        style: TextStyle(
+                          color: Colors.blue[900],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      contact['name']!,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(contact['phone']!),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => DetailContact(
+                            contactId: int.parse(contact['id']!),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
-              title: Text(
-                contact['name']!,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text(contact['phone']!),
-              onTap: () {
-                // Aksi ketika kontak diklik
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const DetailContact()),
-                );
-              },
-            );
-          },
-        ),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,

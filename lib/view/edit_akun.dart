@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:aplikasi_kontak/api/api_constants.dart';
 
 class EditAkun extends StatefulWidget {
-  const EditAkun({super.key});
+  final int? userId;
+  const EditAkun({super.key, this.userId});
 
   @override
   State<EditAkun> createState() => _EditAkunState();
@@ -9,10 +13,64 @@ class EditAkun extends StatefulWidget {
 
 class _EditAkunState extends State<EditAkun> {
   final _formKey = GlobalKey<FormState>();
-  String _username = '';
-  String _email = '';
+  late TextEditingController _nameController;
+  late TextEditingController _usernameController;
   String _password = '';
   String _confirmPassword = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+    _usernameController = TextEditingController();
+    if (widget.userId != null) {
+      fetchUserData(widget.userId!);
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> fetchUserData(int userId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConstants.user}?id=$userId'),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final user = data['data'];
+      setState(() {
+        _usernameController.text = user['username'] ?? '';
+        _nameController.text = user['name'] ?? '';
+      });
+    }
+  }
+
+  Future<void> updateUser() async {
+    final url = Uri.parse('${ApiConstants.updateUser}?id=${widget.userId}');
+    final body = {
+      'username': _usernameController.text,
+      'password': _password,
+      'confirm_password': _confirmPassword,
+      'name': _nameController.text,
+    };
+    final response = await http.put(url, body: body);
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200 && data['message'] != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(data['message'])),
+      );
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(data['error'] ?? 'Gagal update akun')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +80,7 @@ class _EditAkunState extends State<EditAkun> {
         backgroundColor: Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
-          "Edit Akun",
+          'Edit Akun',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -38,51 +96,46 @@ class _EditAkunState extends State<EditAkun> {
             children: [
               const SizedBox(height: 24),
               TextFormField(
-                initialValue: _username,
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nama',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Masukkan nama' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _usernameController,
                 decoration: const InputDecoration(
                   labelText: 'Username',
                   border: OutlineInputBorder(),
                 ),
-                onSaved: (value) => _username = value ?? '',
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Masukkan username' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
-                initialValue: _email,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                onSaved: (value) => _email = value ?? '',
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Masukkan email' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                initialValue: _password,
                 decoration: const InputDecoration(
                   labelText: 'Password',
                   border: OutlineInputBorder(),
                 ),
                 obscureText: true,
-                onSaved: (value) => _password = value ?? '',
+                onChanged: (value) => _password = value,
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Masukkan password' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
-                initialValue: _confirmPassword,
                 decoration: const InputDecoration(
                   labelText: 'Konfirmasi Password',
                   border: OutlineInputBorder(),
                 ),
                 obscureText: true,
-                onSaved: (value) => _confirmPassword = value ?? '',
+                onChanged: (value) => _confirmPassword = value,
                 validator: (value) => value == null || value.isEmpty
                     ? 'Konfirmasi password'
-                    : null,
+                    : (value != _password ? 'Password tidak sama' : null),
               ),
               const SizedBox(height: 24),
               SizedBox(
@@ -99,10 +152,7 @@ class _EditAkunState extends State<EditAkun> {
                   onPressed: () {
                     if (_formKey.currentState?.validate() ?? false) {
                       _formKey.currentState?.save();
-                      // Proses update akun di sini
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Akun berhasil diupdate')),
-                      );
+                      updateUser();
                     }
                   },
                   child: const Text(

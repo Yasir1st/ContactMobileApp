@@ -1,7 +1,11 @@
-import 'package:aplikasi_kontak/view/contact.dart';
-import 'package:aplikasi_kontak/view/edit_akun.dart';
-import 'package:aplikasi_kontak/view/login.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'contact.dart';
+import 'edit_akun.dart';
+import 'login.dart';
+import 'package:aplikasi_kontak/api/api_constants.dart';
 
 class NewContact extends StatefulWidget {
   const NewContact({super.key});
@@ -12,10 +16,78 @@ class NewContact extends StatefulWidget {
 
 class _NewContactState extends State<NewContact> {
   final _formKey = GlobalKey<FormState>();
-  String _name = '';
   String _phone = '';
-
+  String _email = '';
+  String _company = '';
+  String _firstName = '';
+  String _lastName = '';
+  String? name;
+  int? userId;
   final int _selectedIndex = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    getUserIdAndFetchName();
+  }
+
+  void getUserIdAndFetchName() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    userId = prefs.getInt('user_id');
+    if (userId != null) {
+      fetchUserData(userId!);
+    }
+  }
+
+  Future<void> fetchUserData(int userId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConstants.user}?id=$userId'),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final user = data['data'];
+      setState(() {
+        name = user['name'] ?? '';
+      });
+    }
+  }
+
+  Future<void> addContact() async {
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User ID tidak ditemukan')),
+      );
+      return;
+    }
+
+    final fullName = '$_firstName $_lastName'.trim();
+
+    final url = Uri.parse(ApiConstants.createContact);
+    final response = await http.post(
+      url,
+      body: {
+        'user_id': userId.toString(),
+        'name': fullName,
+        'phone': _phone,
+        'email': _email,
+        'company': _company,
+      },
+    );
+    final data = jsonDecode(response.body);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(data['message'] ?? 'Gagal menambah kontak')),
+    );
+
+    if (response.statusCode == 200 &&
+        data['message'] != null &&
+        data['message'].toString().contains('success')) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const Contact()),
+      );
+    }
+  }
 
   void _onNavTapped(int index) {
     if (index == 1) {
@@ -33,13 +105,8 @@ class _NewContactState extends State<NewContact> {
 
   @override
   Widget build(BuildContext context) {
-    // Ambil username dari halaman sebelumnya jika ingin menampilkan di drawer
-    // Misal: final username = ModalRoute.of(context)?.settings.arguments as String? ?? '';
-    // Untuk contoh ini, username dikosongkan
-    const username = '';
-
     return Scaffold(
-      resizeToAvoidBottomInset: true, // Tambahkan baris ini
+      resizeToAvoidBottomInset: true,
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -53,7 +120,9 @@ class _NewContactState extends State<NewContact> {
                     radius: 32,
                     backgroundColor: Colors.white,
                     child: Text(
-                      username.isNotEmpty ? username[0].toUpperCase() : '',
+                      (name != null && name!.isNotEmpty)
+                          ? name![0].toUpperCase()
+                          : '',
                       style: const TextStyle(
                         fontSize: 40,
                         color: Colors.blue,
@@ -63,7 +132,7 @@ class _NewContactState extends State<NewContact> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    username,
+                    name ?? '',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -97,7 +166,6 @@ class _NewContactState extends State<NewContact> {
               leading: const Icon(Icons.edit),
               title: const Text('Edit Akun'),
               onTap: () {
-                // Navigasi ke halaman Edit Akun
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const EditAkun()),
@@ -108,29 +176,27 @@ class _NewContactState extends State<NewContact> {
               leading: const Icon(Icons.delete),
               title: const Text('Hapus Akun'),
               onTap: () {
-                // Aksi hapus akun, misal tampilkan konfirmasi
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: Text('Hapus Akun'),
-                    content:
-                        Text('Apakah Anda yakin ingin menghapus akun ini?'),
+                    title: const Text('Hapus Akun'),
+                    content: const Text(
+                        'Apakah Anda yakin ingin menghapus akun ini?'),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: Text('Batal'),
+                        child: const Text('Batal'),
                       ),
                       TextButton(
                         onPressed: () {
-                          // Proses hapus akun di sini
-                          Navigator.pop(context); // Tutup dialog
+                          Navigator.pop(context);
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(builder: (_) => const Login()),
                           );
                         },
-                        child:
-                            Text('Hapus', style: TextStyle(color: Colors.red)),
+                        child: const Text('Hapus',
+                            style: TextStyle(color: Colors.red)),
                       ),
                     ],
                   ),
@@ -153,10 +219,8 @@ class _NewContactState extends State<NewContact> {
       ),
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.blue, // warna biru appbar
-        iconTheme: const IconThemeData(
-          color: Colors.white, // warna icon drawer putih
-        ),
+        backgroundColor: Colors.blue,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Row(
           children: [
             CircleAvatar(
@@ -173,7 +237,7 @@ class _NewContactState extends State<NewContact> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white, // teks putih
+                    color: Colors.white,
                   ),
                 ),
                 Text(
@@ -221,7 +285,7 @@ class _NewContactState extends State<NewContact> {
                       labelText: 'First Name',
                       border: OutlineInputBorder(),
                     ),
-                    onSaved: (value) => _name = value ?? '',
+                    onSaved: (value) => _firstName = value ?? '',
                     validator: (value) => value == null || value.isEmpty
                         ? 'Masukkan first name'
                         : null,
@@ -232,6 +296,7 @@ class _NewContactState extends State<NewContact> {
                       labelText: 'Last Name',
                       border: OutlineInputBorder(),
                     ),
+                    onSaved: (value) => _lastName = value ?? '',
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -239,6 +304,7 @@ class _NewContactState extends State<NewContact> {
                       labelText: 'Company',
                       border: OutlineInputBorder(),
                     ),
+                    onSaved: (value) => _company = value ?? '',
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -259,6 +325,7 @@ class _NewContactState extends State<NewContact> {
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
+                    onSaved: (value) => _email = value ?? '',
                   ),
                   const SizedBox(height: 24),
                   SizedBox(
@@ -275,14 +342,7 @@ class _NewContactState extends State<NewContact> {
                       onPressed: () {
                         if (_formKey.currentState?.validate() ?? false) {
                           _formKey.currentState?.save();
-                          // Proses simpan contact baru di sini
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text(
-                                    'Contact $_name berhasil ditambahkan')),
-                          );
-                          // Setelah simpan, bisa kembali ke halaman contact
-                          // Navigator.pop(context);
+                          addContact();
                         }
                       },
                       child: const Text(
