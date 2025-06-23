@@ -18,12 +18,25 @@ class _LoginState extends State<Login> {
   String? _password;
   final _formKey = GlobalKey<FormState>();
   bool viewPass = true;
-  int? flag;
 
   @override
   void initState() {
     super.initState();
-    getPref();
+    _checkSession();
+  }
+
+  Future<void> _checkSession() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id');
+    if (userId != null) {
+      // Jika sudah login, langsung ke halaman utama
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const Contact()),
+        );
+      }
+    }
   }
 
   void check() {
@@ -48,35 +61,34 @@ class _LoginState extends State<Login> {
       int flag = data['flag'];
       String pesan = data['message'];
       if (flag == 1) {
-        setState(() {
-          savePref(flag);
-        });
-
-        // Simpan user_id ke SharedPreferences
         SharedPreferences prefs = await SharedPreferences.getInstance();
         if (data['id'] != null) {
           prefs.setInt('user_id', int.parse(data['id'].toString()));
         }
-
-        // Navigasi ke Contact hanya jika login berhasil
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const Contact()),
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login sebagai $_username')),
-        );
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const Contact()),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Login sebagai $_username')),
+          );
+        }
       } else {
-        // Tampilkan pesan error jika login gagal
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(pesan)),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(pesan)),
+          );
+        }
       }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Login failed. Status code: ${response.statusCode}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('Login failed. Status code: ${response.statusCode}')),
+        );
+      }
     }
   }
 
@@ -84,24 +96,6 @@ class _LoginState extends State<Login> {
     setState(() {
       viewPass = !viewPass;
     });
-  }
-
-  Future<void> savePref(int flag) async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
-    preferences.setInt("flag", flag);
-  }
-
-  Future<void> getPref() async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
-    setState(() {
-      flag = preferences.getInt("flag");
-    });
-  }
-
-  Future<void> logOut() async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
-    preferences.remove("flag");
-    setState(() {});
   }
 
   @override

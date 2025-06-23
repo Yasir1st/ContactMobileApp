@@ -221,7 +221,9 @@ class _ContactState extends State<Contact> {
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),
-              onTap: () {
+              onTap: () async {
+                SharedPreferences prefs = await SharedPreferences.getInstance();
+                await prefs.remove('user_id');
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (_) => const Login()),
@@ -266,7 +268,9 @@ class _ContactState extends State<Contact> {
             const Spacer(),
             IconButton(
               icon: const Icon(Icons.logout, color: Colors.white),
-              onPressed: () {
+              onPressed: () async {
+                SharedPreferences prefs = await SharedPreferences.getInstance();
+                await prefs.remove('user_id');
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (_) => const Login()),
